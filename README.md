@@ -16,7 +16,7 @@ optional arguments:
   -e, --errors          					       Show error messages
 ```
 
-I was pretty much annoyed to create ridiculous chains of grep and awk commands over and over again. So I decided to build this script, where I can easily find the IDs i am searching for.
+I was pretty much annoyed to create ridiculous chains of grep and awk commands over and over again. So I decided to build this script, where I can easily find the IDs I am searching for.
 
 ```postq``` can group its output by sender and rcpt, give you the errors messages and return IDs as stdin for ```postsuper```.
 
@@ -24,9 +24,8 @@ I was pretty much annoyed to create ridiculous chains of grep and awk commands o
 - ```--group``` always defaults to sender
 
 ##### Searching for messages which are older than ```--older```
- ```--older``` arguments are more or less like those passed to ```date -d``` in a shorter notation like:
- 
-######Example
+ ```--older``` arguments are more or less like those passed to ```date -d``` in a shorter notation:
+
 ```postq all --older 3d 2h 11m```
 
 - Todo: passing a datetime
