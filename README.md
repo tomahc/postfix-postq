@@ -24,11 +24,14 @@ I was pretty much annoyed to create ridiculous chains of grep and awk commands o
 - ```--group``` always defaults to sender
 
 ##### Searching for messages which are older than ```--older```
+ 
  ```--older``` arguments are more or less like those passed to ```date -d``` in a shorter notation:
+
+ - Todo: passing a datetime
 
 ```postq all --older 3d 2h 11m```
 
-- Todo: passing a datetime
+
 
 ##### _Example Output_
 
@@ -57,6 +60,9 @@ someone.else@example.com
 ```
 
 ##### with ```--errors```
+
+- Todo: regex matching
+
 ```
 give.some@example.com
   AFC351AC602A - Mon Feb 16 07:05:26
@@ -83,7 +89,6 @@ someone.else@example.com
      user1@random.net, user2@random.net, user3@random.net
 ------------------------------
 ```
-- Todo: regex matching
 
 ##### with ```--print``` - postqueue IDs to stdout
 ```
@@ -94,7 +99,7 @@ AFC351AC602A
 E7688DE3FA
 ```
 
-##### with ```--group rcpt``` -  rcpt grouping 
+##### with ```--group rcpt``` - group output by rcpt
 
 ```
 user2@random.net
