@@ -1,0 +1,23 @@
+9C2AB13C0BE*  447678 Fri Jan 30 14:52:13  some.one@example.com
+                                         user1@random.net
+
+7C0C313C0C7     5399 Mon Jan 26 05:56:53  MAILER-DAEMON
+(Host or domain name not found. Name service error for name=notexistant.com type=MX: Host not found, try again)
+                                         bounce-1422246829.7609.89425103@notexistant.com
+
+DD6C66A8064*    7837 Mon Dec  1 17:18:29  someone.else@example.com
+                                         user1@random.net
+                                         user2@random.net
+                                         user3@random.net
+
+AFC351AC602A     3235 Mon Feb 16 07:05:26  give.some@example.com
+                  (connect to mx.random.net[999.888.777.666]:25: Connection timed out)
+                                         ftp@example.net
+   (connect to mx2.random.net[888.721.412.123]:25: Connection timed out)
+                                         admin@random.net
+
+E7688DE3FA       3018 Wed Feb 11 15:31:03  some.one@example.com
+(Host or domain name not found. Name service error for name=example.com type=MX: Host not found, try again)
+                                         she@example.com
+                                         he@example.com
+
