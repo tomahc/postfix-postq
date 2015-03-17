@@ -1,0 +1,288 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+
+import re
+from subprocess import Popen, PIPE
+from collections import defaultdict
+import argparse
+from datetime import datetime, timedelta
+import time
+from functools import partial
+import os
+from itertools import chain
+
+
+_re_msg_id = r'(?P<id>^[A-Z0-9]+)[!*]?'
+_re_msg_size = r'(?P<size>\d+)'
+_re_msg_arrival = r'(?P<arrival>[A-Za-z]+\s+[A-Za-z]+\s+\d+\s+\d+:\d+:\d+)'
+_re_msg_sender = r'(?P<sender>\S+@\S+|MAILER-DAEMON)'
+
+re_queue_data = re.compile(_re_msg_id + '\s+' + _re_msg_size + '\s+' + _re_msg_arrival + '\s+' + _re_msg_sender)
+re_msg_rcpt = re.compile(r'^\s{2,}(?P<rcpt>\S+@\S+)$')
+
+POSTFIX_SPOOL = '/var/spool/postfix'
+
+
+def _raw_postqueue_output(from_file=None):
+    if from_file:
+        with open(from_file, 'r') as testfile:
+            output = testfile.read()
+
+    else:
+        output, error = Popen(['postqueue', '-p'], stdout=PIPE, stderr=PIPE).communicate()
+
+    return output.splitlines()
+
+
+def parse_postqueue(fd_data):
+    """Generator function"""
+
+    chunk = dict()
+    rcpts = defaultdict(list)
+    error = None
+
+    for line in fd_data:
+        if line.startswith('-'):
+            continue
+
+        if not line or line.startswith('\n'):
+            chunk.update(rcpts)
+            yield chunk
+            chunk = dict()
+            rcpts = defaultdict(list)
+            error = None
+
+        else:
+            # search and parse sender line
+            try:
+                chunk = re_queue_data.search(line).groupdict()
+                chunk['sender'] = list((chunk.get('sender'),))
+
+            except AttributeError:
+                # search for recipients
+                try:
+                    rcpt = (re_msg_rcpt.search(line).group(1), error)
+                    rcpts['rcpt'].append(rcpt)
+
+                except AttributeError:
+                    error = line.strip()
+
+
+def arrival_to_datetime(arrivaltime):
+    """
+    arrivaltime has to be converted, because python does not support non-zero-padded %d
+    Furthermore no year is given in postqueue -p output, so it has to be guessed by comparing months
+    """
+
+    arrival = datetime.strptime(arrivaltime, '%a %b %d %X')
+
+    if arrival.month > datetime.now().month:
+        arrivaltime_with_year = str(datetime.now().year - 1) + ' ' + arrivaltime
+
+    else:
+        arrivaltime_with_year = str(datetime.now().year) + ' ' + arrivaltime
+
+    return datetime.strptime(arrivaltime_with_year, '%Y %a %b %d %X')
+
+
+def timeargs_to_datetime(timeargs):
+    """
+    :param timeargs: list of timdelta args in d|h|m|s notation. eg ['3d', '12h']
+    :return: datetime obj
+    """
+
+    # TODO: search for a better solution?
+    re_time = re.compile(r'^(?P<days>\d+)d|(?P<hours>\d+)h|(?P<minutes>\d+)m$')
+
+    def consolidate(adict):
+        # helper function to grab the not None values from a dict and consolidate them in a new dict
+        # this i needed, because of the the way re_time matches.
+        # Every match will create a dict with one value not being None
+        for k, v in adict.iteritems():
+            if v is None:
+                continue
+
+            return k, int(v)
+
+    matched_groups = list()
+
+    for timearg in timeargs:
+        try:
+            matched_groups.append(re_time.search(timearg.lower()).groupdict())
+
+        except AttributeError:
+            pass
+
+    timedelta_args = dict(map(consolidate, matched_groups))
+
+    return datetime.now() - timedelta(**timedelta_args)
+
+
+def to_timestamp(datetimeobj):
+    return time.mktime(datetimeobj.timetuple())
+
+
+def is_older_than(timestamp, queue_chunk):
+    if to_timestamp(arrival_to_datetime(queue_chunk.get('arrival'))) < timestamp:
+        return True
+
+
+def filter_by(queue_chunk, filterarg, searchterm):
+    re_searchterm = re.compile(searchterm)
+    for elem in queue_chunk.get(filterarg):
+        if isinstance(elem, tuple):
+            search_in = elem[0]
+
+        else:
+            search_in = elem
+
+        try:
+            if re_searchterm.search(search_in):
+                return True
+
+        except AttributeError:
+            pass
+
+
+def select_from_queue(queuename, queue_chunks):
+
+    postqueue_ids = list()
+
+    for rootdir, subdir, files in os.walk(os.path.join(POSTFIX_SPOOL, queuename)):
+        if not files:
+            continue
+
+        postqueue_ids.append(files)
+
+    postfix_queue_ids = list(chain.from_iterable(postqueue_ids))
+
+    for queue_chunk in queue_chunks:
+        if queue_chunk.get('id') in postfix_queue_ids:
+            yield queue_chunk
+
+
+def groups(grouparg, queue_chunks):
+
+    def errors(by='rcpt'):
+        rcpts = list()
+        mail_errors = defaultdict(list)
+
+        for data in queue_chunk.get('rcpt'):
+            addr, error = data
+            rcpts.append(addr)
+
+            if by == 'rcpt':
+                if addr != groupname:
+                    continue
+
+                mail_errors[error].append(queue_chunk_copy.get('sender')[0])
+
+            else:
+                mail_errors[error].append(addr)
+
+        return dict(mail_errors)
+
+    grouped_queuedata = defaultdict(list)
+
+    for queue_chunk in queue_chunks:
+        groupnames = queue_chunk.get(grouparg)
+
+        for gname in groupnames:
+            queue_chunk_copy = queue_chunk.copy()
+
+            if isinstance(gname, tuple):
+                groupname, __ = gname
+
+            else:
+                groupname = gname
+
+            queue_chunk_copy.update({'errors': errors(by=grouparg)})
+            grouped_queuedata[groupname].append(queue_chunk_copy)
+
+    return grouped_queuedata
+
+
+def format_output(headline, queue_chunks, show_errors=False):
+    print headline
+    for queue_chunk in queue_chunks:
+        for error, addrs in queue_chunk.get('errors').iteritems():
+            print "{id:>14} - {arrival}".format(**queue_chunk)
+            print "{leading_space:>5}{addr}".format(leading_space=' ', addr=', '.join(addrs))
+            if show_errors:
+                if not error:
+                    continue
+                print '{leading_space:>6}{error}'.format(leading_space=' ', error=error)
+
+    print "-" * 30
+
+
+def filtered(queuedata_groups):
+
+    has_sender = partial(filter_by, filterarg='sender', searchterm=arguments.get('sender'))
+    has_rcpt = partial(filter_by, filterarg='rcpt', searchterm=arguments.get('rcpt'))
+
+    for queuedata_group in queuedata_groups.iteritems():
+        groupname, queue_chunks = queuedata_group
+        filtered_dataset = defaultdict(list)
+        for queue_chunk in queue_chunks:
+            try:
+                if not has_sender(queue_chunk):
+                    continue
+
+            except TypeError:
+                pass
+
+            try:
+                if not has_rcpt(queue_chunk):
+                    continue
+
+            except TypeError:
+                pass
+
+            if not is_older_than(search_time, queue_chunk):
+                continue
+
+            filtered_dataset[groupname].append(queue_chunk)
+
+        yield filtered_dataset
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('queue', choices=['all', 'active', 'deferred', 'hold'], metavar='queue', help='Select a queue')
+    parser.add_argument('-o', '--older', nargs='+', metavar='time', default=['0d'], help='Valid format is: d|h|m|s')
+    parser.add_argument('-s', '--sender', metavar='sender')
+    parser.add_argument('-r', '--rcpt', metavar='recipient')
+    parser.add_argument('-g', '--group', choices=('sender', 'rcpt'), default='sender')
+    parser.add_argument('-f', '--filename', metavar='filename', help='Read postqueue output from file')
+    parser.add_argument('-p', '--print', action='store_true', help='Print IDs instead')
+    parser.add_argument('-e', '--errors', action='store_true', help='Show error messages')
+
+    arguments = vars(parser.parse_args())
+
+    if arguments.get('queue') == 'all':
+        postqueue_chunks = list(parse_postqueue(_raw_postqueue_output(from_file=arguments.get('filename'))))
+
+    else:
+        postqueue_chunks = list(select_from_queue(arguments.get('queue'), parse_postqueue(
+            _raw_postqueue_output(from_file=arguments.get('filename')))))
+
+    search_time = to_timestamp(timeargs_to_datetime(arguments.get('older')))
+
+    queue_ids = set()
+    filtered_groups = filtered(groups(arguments.get('group'), postqueue_chunks))
+
+    if arguments.get('print'):
+        for filtered_group in filtered_groups:
+            for groupkey, data_chunks in filtered_group.iteritems():
+                for data_chunk in data_chunks:
+                    queue_ids.add(data_chunk.get('id'))
+
+        print '\n'.join(queue_ids)
+
+    else:
+        for filtered_group in filtered_groups:
+            for groupkey, data_chunks in filtered_group.iteritems():
+                format_output(groupkey, data_chunks, arguments.get('errors'))
