@@ -16,7 +16,7 @@ optional arguments:
   -e, --errors          					       Show error messages
 ```
 
-I was pretty much annoyed to create ridiculous chains of grep and awk commands over and over again. So I decided to build this script, where I can easily find the IDs I am searching for.
+I was pretty much annoyed to create ridiculous chains of grep and awk commands over and over again. So I decided to build this script, where I can easily find the IDs I am looking for.
 
 ```postq``` can group its output by sender and rcpt, give you the errors messages and return IDs as stdin for ```postsuper```.
 
