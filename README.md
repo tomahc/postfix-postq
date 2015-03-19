@@ -11,14 +11,14 @@ optional arguments:
   -s sender, --sender sender
   -r recipient, --rcpt recipient
   -g {sender,rcpt}, --group {sender,rcpt}
-  -i filename, --filename filename                 Read postqueue output from file
+  -f filename, --filename filename                 Read postqueue output from file
   -p, --print           					       Print IDs instead
   -e, --errors          					       Show error messages
 ```
 
 I was pretty much annoyed to create ridiculous chains of grep and awk commands over and over again. So I decided to build this script, where I can easily find the IDs I am looking for.
 
-```postq``` can group its output by sender and rcpt, give you the errors messages and return IDs as stdin for ```postsuper```.
+```postq``` can group its output by sender and rcpt, give you the error messages and return IDs as stdin for ```postsuper```.
 
 - ```--rcpt``` and ```--sender``` has full regex support
 - ```--group``` always defaults to sender
